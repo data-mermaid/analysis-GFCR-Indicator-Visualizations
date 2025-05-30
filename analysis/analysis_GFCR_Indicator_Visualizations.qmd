@@ -2,7 +2,7 @@
 title: "GFCR Indicator Visualizations"
 subtitle: "F1 - F7 and raw finance data"
 author: "Iain R. Caldwell"
-date: 05/29/2025
+date: 05/30/2025
 format: 
   html: #for website
     embed-resources: true
@@ -71,7 +71,6 @@ gfcrProject <- mermaid_search_projects(name = "MAR+Invest",
 
 ### Get all GFCR data associated with that project ####
 gfcrProjectReports <- mermaid_get_gfcr_report(project = gfcrProject)
-
 ```
 
 ------------------------------------------------------------------------
@@ -389,7 +388,7 @@ ggplot() +
 
 ```{r}
 #| label: F3 Number plots
-#| fig-height: 10
+#| fig-height: 6
 #Plot for sub-indicators with number values - F3.2, F3.3, F3.4, F3.6
 gfcrIndF3_2346_PlotTBL <- gfcrProjectReports$F3 %>% 
   filter(`Data Type` == "Report" &
@@ -471,18 +470,20 @@ extract_text <- function(s) {
 }
 
 # Prepare men/women data
-f3_5PlotBarsTBL <- gfcrProjectReports$F3 %>% 
+gfcrIndF3_5PlotBarsTBL <- gfcrProjectReports$F3 %>% 
   filter(`Data Type` == "Report" &
            grepl(pattern = "F3.5a|F3.5b",
                  x = `Sub-Indicator Name`)) %>% 
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
   mutate(`Reporting Date` = factor(`Reporting Date`),
          PopulationType = extract_text(`Sub-Indicator Name`)) %>% 
   mutate(PopulationType = factor(PopulationType, levels = c("men", "women")))
 
 # Prepare youth and indigenous data
-f3_5OtherTBL <- gfcrProjectReports$F3 %>%
+gfcrIndF3_5OtherTBL <- gfcrProjectReports$F3 %>%
   filter(`Data Type` == "Report",
          grepl("F3.5c|F3.5d", `Sub-Indicator Name`)) %>%
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
   mutate(`Reporting Date` = factor(`Reporting Date`),
          PopulationType = extract_text(`Sub-Indicator Name`)) %>%
   group_by(`Reporting Date`, PopulationType) %>%
@@ -490,16 +491,16 @@ f3_5OtherTBL <- gfcrProjectReports$F3 %>%
   pivot_wider(names_from = PopulationType, values_from = Value, values_fill = 0)
 
 # Get total height of each bar (men + women)
-bar_totals <- f3_5PlotBarsTBL %>%
+bar_totals <- gfcrIndF3_5PlotBarsTBL %>%
   group_by(`Reporting Date`) %>%
   summarise(Total = sum(Value), .groups = "drop")
 
 # Combine totals with youth and indigenous
-label_data <- left_join(bar_totals, f3_5OtherTBL, by = "Reporting Date") %>%
+label_data <- left_join(bar_totals, gfcrIndF3_5OtherTBL, by = "Reporting Date") %>%
   mutate(Label = paste0("Youth: ", youth, "\nIndigenous: ", indigenous))
 
 # Extract target data
-f3_5TargetTBL <- gfcrProjectReports$F3 %>%
+gfcrIndF3_5TargetTBL <- gfcrProjectReports$F3 %>%
   filter(`Data Type` == "Target",
          grepl("F3.5a|F3.5b", `Sub-Indicator Name`)) %>%
   group_by(`Reporting Date`, `Data Type`) %>%
@@ -507,27 +508,29 @@ f3_5TargetTBL <- gfcrProjectReports$F3 %>%
   filter(`Reporting Date` == max(`Reporting Date`))
 
 #Horizontal stacked barplots, dashed target, and numbers for youth and indigenous
-ggplot(data = f3_5PlotBarsTBL,
+ggplot(data = gfcrIndF3_5PlotBarsTBL,
        aes(x = `Reporting Date`, y = Value, fill = PopulationType)) +
   geom_col(color = "black", width = 0.5) +
-  geom_hline(data = f3_5TargetTBL,
+  geom_hline(data = gfcrIndF3_5TargetTBL,
              aes(yintercept = TargetTotal,
                  color = `Data Type`),
              linetype = "dashed",
              linewidth = 1) +
-  geom_text(data = label_data,
-            aes(x = `Reporting Date`,
-                y = Total * 1.05, label = Label),#+1 for spacing
-            inherit.aes = FALSE,
-            size = 6,
-            hjust = 0) +
+  geom_label(data = label_data,
+           aes(x = `Reporting Date`,
+               y = Total * 1.05, label = Label),
+           inherit.aes = FALSE,
+           size = 6, hjust = 0,
+           fill = "white",    # Background color
+           alpha = 0.6,       # Partial transparency
+           label.size = 0,  # Border thickness
+           color = "black") +  # Text color
   labs(title = "F3.5 Number of people engaged in coral restoration",
        x = "",
        y = "# people") +
   scale_fill_manual(values = populationColors) +
   scale_color_manual(values = dataColors, labels = dataLabels) +
-  theme(aspect.ratio = 1,
-        plot.title = element_text(hjust = 0, size = 25),
+  theme(plot.title = element_text(hjust = 0, size = 25),
         panel.background = element_rect(fill = "white"),
         legend.title = element_blank(),
         axis.title = element_text(size = 20),
@@ -546,7 +549,7 @@ ggplot(data = f3_5PlotBarsTBL,
 ## [F4. Change in coral reef health]{style="color: #FF7F50;"}
 
 ```{r}
-#| label: F4 table and plots
+#| label: F4 table and plots for benthic cover
 
 #Create a table with subindicators as rows
 f4TableTrans <- gfcrProjectReports$F4 %>%
@@ -575,6 +578,116 @@ kable(f4TableTrans) %>%
                           border_right = TRUE,
                           extra_css = "border-right: 1px solid black;")
 
+
+#Barplot showing reported coral and macroalgae on opposite sites of origin
+gfcrIndF4_12TBL <- gfcrProjectReports$F4 %>%
+  filter(`Data Type` == "Report" &
+           !grepl(pattern = "F4.3", x = `Sub-Indicator Name`)) %>%
+  bind_rows(gfcrProjectReports$F4 %>% 
+              filter(`Data Type` == "Target" &
+                       !grepl(pattern = "F4.3", x = `Sub-Indicator Name`)) %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == min(`Reporting Date`) &
+                        `Data Type` == "Report",
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")"),
+         Group = factor(case_when(grepl(pattern = "F4.1",
+                                        x = `Sub-Indicator Name`) ~
+                                    "Live hard coral",
+                                  grepl(pattern = "F4.2",
+                                        x = `Sub-Indicator Name`) ~
+                                    "Macroalgae"),
+                        levels = c("Macroalgae", "Live hard coral")),
+         Value = ifelse(Group == "Macroalgae", -Value, Value)) 
+
+dataLabels = gfcrIndF4_12TBL$Label
+names(dataLabels) <- gfcrIndF4_12TBL$Color
+
+fillColors <- c("Live hard coral" = "#498FC9",
+                "Macroalgae" = "#B2B002")
+
+ggplot() +
+  geom_col(data = gfcrIndF4_12TBL %>% 
+             filter(Color == "Report"),
+           aes(x = `Reporting Date`, y = Value, fill = Group),
+           width = 0.25) +
+  geom_hline(data = gfcrIndF4_12TBL %>% 
+               filter(Color != "Report"),
+             aes(yintercept = Value, color = Color),
+             linetype = "dashed",
+             linewidth = 1) +
+  geom_hline(yintercept = 0, color = "black") +
+  labs(x = "",
+       y = expression(paste("% cover")),
+       title = "F4.1 & F4.2 Average macroalgae and live coral cover") +
+  scale_y_continuous(breaks = seq(from = -100, to = 100, by = 10),
+                     label = abs(seq(from = -100, to = 100, by = 10))) +
+  scale_fill_manual(values = fillColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  theme(aspect.ratio = 0.5,
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black")) +
+  coord_flip()
+```
+
+```{r}
+#| label: F4.3 plot - reef fish biomass
+#Plot for F3.1 Area of coral reef restoration
+gfcrIndF4_3PlotTBL <- gfcrProjectReports$F4 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F4.3", x = `Sub-Indicator Name`)) %>% 
+  bind_rows(gfcrProjectReports$F4 %>% 
+              filter(`Data Type` == "Target" &
+                       grepl(pattern = "F4.3", x = `Sub-Indicator Name`)) %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == min(`Reporting Date`) &
+                          `Data Type` == "Report",
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")"))
+
+dataLabels = gfcrIndF4_3PlotTBL$Label
+names(dataLabels) <- gfcrIndF4_3PlotTBL$Color
+
+ggplot() +
+  geom_col(data = gfcrIndF4_3PlotTBL %>% 
+             filter(Color == "Report"),
+           aes(x = `Reporting Date`, y = Value),
+           fill = "#779FCA",
+           width = 0.25) +
+  geom_hline(data = gfcrIndF4_3PlotTBL %>% 
+               filter(Color != "Report"),
+             aes(yintercept = Value, color = Color),
+             linetype = "dashed",
+             linewidth = 1) +
+  labs(x = "",
+       y = expression(paste("Fish biomass (kg/ha)")),
+       title = "F4.3 Average reef fish biomass") +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  guides(fill = "none") +
+  theme(aspect.ratio = 0.5,
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black")) +
+  coord_flip()
 ```
 
 ------------------------------------------------------------------------
@@ -582,7 +695,7 @@ kable(f4TableTrans) %>%
 ## [F5. Number of communities engaged in meaningful participation, co-development and capacity strengthening]{style="color: #FF7F50;"}
 
 ```{r}
-#| label: F5 table and plots
+#| label: F5 table
 
 #Create a table with subindicators as rows
 f5TableTrans <- gfcrProjectReports$F5 %>%
@@ -613,12 +726,169 @@ kable(f5TableTrans) %>%
 
 ```
 
-------------------------------------------------------------------------
+```{r}
+#| label: F5 plots for sub-indicators with numbers - 1, 2, 3, 5, 6 
+#| fig-height: 8
+#Plot for sub-indicators with number values - F5.1, F5.2, F5.3, F5.5, F5.6
+gfcrIndF5_12356_PlotTBL <- gfcrProjectReports$F5 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F5.1|F5.2|F5.3|F3.5|F5.6",
+                 x = `Sub-Indicator Name`)) %>% 
+  bind_rows(gfcrProjectReports$F5 %>% 
+              filter(`Data Type` == "Target" &
+                       grepl(pattern = "F5.1|F5.2|F5.3|F3.5|F5.6",
+                             x = `Sub-Indicator Name`)) %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == min(`Reporting Date`) &
+                          `Data Type` == "Report",
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")"),
+         NumberType =
+           case_when(grepl(pattern = "F5.1",
+                           x = `Sub-Indicator Name`) ~
+                       "F5.1 Local communities engaged",
+                     grepl(pattern = "F5.2",
+                           x = `Sub-Indicator Name`) ~
+                       "F5.2 Local organizations engaged",
+                     grepl(pattern = "F5.3",
+                           x = `Sub-Indicator Name`) ~
+                       "F5.3 Local scientific/research partners",
+                     grepl(pattern = "F5.5",
+                           x = `Sub-Indicator Name`) ~
+                       "F5.5 Agreements with local authorities",
+                     grepl(pattern = "F5.6",
+                           x = `Sub-Indicator Name`) ~
+                       "F5.6 National policies linked to GFCR engagement"))
+
+dataLabels = gfcrIndF5_12356_PlotTBL$Label
+names(dataLabels) <- gfcrIndF5_12356_PlotTBL$Color
+
+ggplot() +
+  facet_wrap(~NumberType, ncol = 1, scales = "free") +
+  geom_col(data = gfcrIndF5_12356_PlotTBL %>% 
+             filter(Color == "Report"),
+           aes(x = `Reporting Date`, y = Value, fill = Color),
+           width = 0.25) +
+  geom_hline(data = gfcrIndF5_12356_PlotTBL %>% 
+               filter(Color != "Report"),
+             aes(yintercept = Value, color = Color),
+             linetype = "dashed",
+             linewidth = 1) +
+  labs(x = "",
+       y = "#") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 5),
+                     labels = scales::number_format(accuracy = 1)) +
+  scale_fill_manual(values = dataColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  guides(fill = "none") +
+  theme(panel.spacing = unit(1, "lines"),
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "right",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"),
+        strip.background = element_rect(fill = "white", colour = "black"),
+        strip.text = element_text(hjust = 0, size = 20)) +
+  coord_flip()
+```
+
+```{r}
+#| label: F5.4 plot - number of local practitioners trained/ supported
+##Stacked bar plot by gender with percentages of youth and indigenous as captions
+populationColors <- c("#777777", "#5F8993", "#E37754", "#F6DA80", "#454C84")
+names(populationColors) <- c("total", "men", "women", "youth", "indigenous")
+
+# Extract text within brackets to get "men" and "women"
+extract_text <- function(s) {
+  str_extract(s, "\\[(.*?)\\]") %>%    # Extract text within square brackets
+    str_replace_all("\\[|\\]", "")     # Remove brackets
+}
+
+# Prepare men/women data
+gfcrIndF5_4PlotBarsTBL <- gfcrProjectReports$F5 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F5.4a|F5.4b",
+                 x = `Sub-Indicator Name`)) %>% 
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>% 
+  mutate(PopulationType = factor(PopulationType, levels = c("men", "women")))
+
+# Prepare youth and indigenous data
+gfcrIndF5_4OtherTBL <- gfcrProjectReports$F5 %>%
+  filter(`Data Type` == "Report",
+         grepl("F5.4c|F5.4d", `Sub-Indicator Name`)) %>%
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, PopulationType) %>%
+  summarise(Value = sum(Value), .groups = "drop") %>%
+  pivot_wider(names_from = PopulationType, values_from = Value, values_fill = 0)
+
+# Get total height of each bar (men + women)
+bar_totals <- gfcrIndF5_4PlotBarsTBL %>%
+  group_by(`Reporting Date`) %>%
+  summarise(Total = sum(Value), .groups = "drop")
+
+# Combine totals with youth and indigenous
+label_data <- left_join(bar_totals, gfcrIndF5_4OtherTBL, by = "Reporting Date") %>%
+  mutate(Label = paste0("Youth: ", youth, "\nIndigenous: ", indigenous))
+
+# Extract target data
+gfcrIndF5_4TargetTBL <- gfcrProjectReports$F5 %>%
+  filter(`Data Type` == "Target",
+         grepl("F5.4a|F5.4b", `Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, `Data Type`) %>%
+  summarise(TargetTotal = sum(Value), .groups = "drop") %>%
+  filter(`Reporting Date` == max(`Reporting Date`))
+
+#Horizontal stacked barplots, dashed target, and numbers for youth and indigenous
+ggplot(data = gfcrIndF5_4PlotBarsTBL,
+       aes(x = `Reporting Date`, y = Value, fill = PopulationType)) +
+  geom_col(color = "black", width = 0.5) +
+  geom_hline(data = gfcrIndF5_4TargetTBL,
+             aes(yintercept = TargetTotal,
+                 color = `Data Type`),
+             linetype = "dashed",
+             linewidth = 1) +
+  geom_label(data = label_data,
+           aes(x = `Reporting Date`,
+               y = Total * 1.05, label = Label),
+           inherit.aes = FALSE,
+           size = 6, hjust = 0,
+           fill = "white",    # Background color
+           alpha = 0.6,       # Partial transparency
+           label.size = 0,  # Border thickness
+           color = "black") +  # Text color
+  labs(title = "F5.4 Number of local practitioners trained/supported",
+       x = "",
+       y = "# people") +
+  scale_fill_manual(values = populationColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  theme(plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"),
+        legend.position = "right",
+        strip.text = element_text(size = 18),
+        strip.background = element_blank()) +
+  coord_flip(clip = "off")
+```
 
 ## [F6. Number of people supported through livelihoods and direct jobs]{style="color: #FF7F50;"}
 
 ```{r}
-#| label: F6 table and plots
+#| label: F6 table and plot
 
 #Create a table with subindicators as rows
 f6TableTrans <- gfcrProjectReports$F6 %>%
@@ -646,6 +916,89 @@ kable(f6TableTrans) %>%
                           background = dataColors["Report"],
                           border_right = TRUE,
                           extra_css = "border-right: 1px solid black;")
+
+##Stacked bar plot by gender with percentages of youth and indigenous as captions
+populationColors <- c("#777777", "#5F8993", "#E37754", "#F6DA80", "#454C84")
+names(populationColors) <- c("total", "men", "women", "youth", "indigenous")
+
+# Extract text within brackets to get "men" and "women"
+extract_text <- function(s) {
+  str_extract(s, "\\[(.*?)\\]") %>%    # Extract text within square brackets
+    str_replace_all("\\[|\\]", "")     # Remove brackets
+}
+
+# Prepare men/women data
+gfcrIndF6PlotBarsTBL <- gfcrProjectReports$F6 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F6.1a|F6.1b",
+                 x = `Sub-Indicator Name`)) %>% 
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>% 
+  mutate(PopulationType = factor(PopulationType, levels = c("men", "women")))
+
+# Prepare youth and indigenous data
+gfcrIndF6OtherTBL <- gfcrProjectReports$F6 %>%
+  filter(`Data Type` == "Report",
+         grepl("F6.1c|F6.1d", `Sub-Indicator Name`)) %>%
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, PopulationType) %>%
+  summarise(Value = sum(Value), .groups = "drop") %>%
+  pivot_wider(names_from = PopulationType, values_from = Value, values_fill = 0)
+
+# Get total height of each bar (men + women)
+bar_totals <- gfcrIndF6PlotBarsTBL %>%
+  group_by(`Reporting Date`) %>%
+  summarise(Total = sum(Value), .groups = "drop")
+
+# Combine totals with youth and indigenous
+label_data <- left_join(bar_totals, gfcrIndF6OtherTBL, by = "Reporting Date") %>%
+  mutate(Label = paste0("Youth: ", youth, "\nIndigenous: ", indigenous))
+
+# Extract target data
+gfcrIndF6TargetTBL <- gfcrProjectReports$F6 %>%
+  filter(`Data Type` == "Target",
+         grepl("F6.1a|F6.1b", `Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, `Data Type`) %>%
+  summarise(TargetTotal = sum(Value), .groups = "drop") %>%
+  filter(`Reporting Date` == max(`Reporting Date`))
+
+#Horizontal stacked barplots, dashed target, and numbers for youth and indigenous
+ggplot(data = gfcrIndF6PlotBarsTBL,
+       aes(x = `Reporting Date`, y = Value, fill = PopulationType)) +
+  geom_col(color = "black", width = 0.5) +
+  geom_hline(data = gfcrIndF6TargetTBL,
+             aes(yintercept = TargetTotal,
+                 color = `Data Type`),
+             linetype = "dashed",
+             linewidth = 1) +
+  geom_label(data = label_data,
+           aes(x = `Reporting Date`,
+               y = Total * 1.05, label = Label),
+           inherit.aes = FALSE,
+           size = 6, hjust = 0,
+           fill = "white",    # Background color
+           alpha = 0.6,       # Partial transparency
+           label.size = 0,  # Border thickness
+           color = "black") +  # Text color
+  labs(title = "F6.1 Number of direct jobs created",
+       x = "",
+       y = "# people") +
+  scale_fill_manual(values = populationColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  theme(plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"),
+        legend.position = "right",
+        strip.text = element_text(size = 18),
+        strip.background = element_blank()) +
+  coord_flip(clip = "off")
 ```
 
 ------------------------------------------------------------------------
@@ -653,7 +1006,7 @@ kable(f6TableTrans) %>%
 ## [F7. Number of people supported to better adapt, respond and recover to the effects of climate change and major external shocks as a result of GFCR]{style="color: #FF7F50;"}
 
 ```{r}
-#| label: F7 table and plots
+#| label: F7 table
 
 #Create a table with subindicators as rows
 f7TableTrans <- gfcrProjectReports$F7 %>%
@@ -682,7 +1035,241 @@ kable(f7TableTrans) %>%
                           extra_css = "border-right: 1px solid black;")
 ```
 
-------------------------------------------------------------------------
+```{r}
+#| label: F7.1 plot - direct beneficiaries
+##Stacked bar plot by gender with percentages of youth and indigenous as captions
+populationColors <- c("#777777", "#5F8993", "#E37754", "#F6DA80", "#454C84")
+names(populationColors) <- c("total", "men", "women", "youth", "indigenous")
+
+# Extract text within brackets to get "men" and "women"
+extract_text <- function(s) {
+  str_extract(s, "\\[(.*?)\\]") %>%    # Extract text within square brackets
+    str_replace_all("\\[|\\]", "")     # Remove brackets
+}
+
+# Prepare men/women data
+gfcrIndF7_1PlotBarsTBL <- gfcrProjectReports$F7 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F7.1a|F7.1b",
+                 x = `Sub-Indicator Name`)) %>% 
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>% 
+  mutate(PopulationType = factor(PopulationType, levels = c("men", "women")))
+
+# Prepare youth and indigenous data
+gfcrIndF7_1OtherTBL <- gfcrProjectReports$F7 %>%
+  filter(`Data Type` == "Report",
+         grepl("F7.1c|F7.1d", `Sub-Indicator Name`)) %>%
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, PopulationType) %>%
+  summarise(Value = sum(Value), .groups = "drop") %>%
+  pivot_wider(names_from = PopulationType, values_from = Value, values_fill = 0)
+
+# Get total height of each bar (men + women)
+bar_totals <- gfcrIndF7_1PlotBarsTBL %>%
+  group_by(`Reporting Date`) %>%
+  summarise(Total = sum(Value), .groups = "drop")
+
+# Combine totals with youth and indigenous
+label_data <- left_join(bar_totals, gfcrIndF7_1OtherTBL, by = "Reporting Date") %>%
+  mutate(Label = paste0("Youth: ", youth, "\nIndigenous: ", indigenous))
+
+# Extract target data
+gfcrIndF7_1TargetTBL <- gfcrProjectReports$F7 %>%
+  filter(`Data Type` == "Target",
+         grepl("F7.1a|F7.1b", `Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, `Data Type`) %>%
+  summarise(TargetTotal = sum(Value), .groups = "drop") %>%
+  filter(`Reporting Date` == max(`Reporting Date`))
+
+#Horizontal stacked barplots, dashed target, and numbers for youth and indigenous
+ggplot(data = gfcrIndF7_1PlotBarsTBL,
+       aes(x = `Reporting Date`, y = Value, fill = PopulationType)) +
+  geom_col(color = "black", width = 0.5) +
+  geom_hline(data = gfcrIndF7_1TargetTBL,
+             aes(yintercept = TargetTotal,
+                 color = `Data Type`),
+             linetype = "dashed",
+             linewidth = 1) +
+  geom_label(data = label_data,
+           aes(x = `Reporting Date`,
+               y = Total * 1.05, label = Label),
+           inherit.aes = FALSE,
+           size = 6, hjust = 0,
+           fill = "white",    # Background color
+           alpha = 0.6,       # Partial transparency
+           label.size = 0,  # Border thickness
+           color = "black") +  # Text color
+  labs(title = "F7.1 Total direct beneficiaries",
+       x = "",
+       y = "# people") +
+  scale_fill_manual(values = populationColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  theme(plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"),
+        legend.position = "right",
+        strip.text = element_text(size = 18),
+        strip.background = element_blank()) +
+  coord_flip(clip = "off")
+```
+
+```{r}
+#| label: F7.2 plot - indirect beneficiaries
+
+##Stacked bar plot by gender with percentages of youth and indigenous as captions
+populationColors <- c("#777777", "#5F8993", "#E37754", "#F6DA80", "#454C84")
+names(populationColors) <- c("total", "men", "women", "youth", "indigenous")
+
+# Extract text within brackets to get "men" and "women"
+extract_text <- function(s) {
+  str_extract(s, "\\[(.*?)\\]") %>%    # Extract text within square brackets
+    str_replace_all("\\[|\\]", "")     # Remove brackets
+}
+
+# Prepare men/women data
+gfcrIndF7_2PlotBarsTBL <- gfcrProjectReports$F7 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F7.2a|F7.2b",
+                 x = `Sub-Indicator Name`)) %>% 
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>% 
+  mutate(PopulationType = factor(PopulationType, levels = c("men", "women")))
+
+# Prepare youth and indigenous data
+gfcrIndF7_2OtherTBL <- gfcrProjectReports$F7 %>%
+  filter(`Data Type` == "Report",
+         grepl("F7.2c|F7.2d", `Sub-Indicator Name`)) %>%
+  filter(`Reporting Date` != min(`Reporting Date`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, PopulationType) %>%
+  summarise(Value = sum(Value), .groups = "drop") %>%
+  pivot_wider(names_from = PopulationType, values_from = Value, values_fill = 0)
+
+# Get total height of each bar (men + women)
+bar_totals <- gfcrIndF7_2PlotBarsTBL %>%
+  group_by(`Reporting Date`) %>%
+  summarise(Total = sum(Value), .groups = "drop")
+
+# Combine totals with youth and indigenous
+label_data <- left_join(bar_totals, gfcrIndF7_2OtherTBL, by = "Reporting Date") %>%
+  mutate(Label = paste0("Youth: ", youth, "\nIndigenous: ", indigenous))
+
+# Extract target data
+gfcrIndF7_2TargetTBL <- gfcrProjectReports$F7 %>%
+  filter(`Data Type` == "Target",
+         grepl("F7.2a|F7.2b", `Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, `Data Type`) %>%
+  summarise(TargetTotal = sum(Value), .groups = "drop") %>%
+  filter(`Reporting Date` == max(`Reporting Date`))
+
+#Horizontal stacked barplots, dashed target, and numbers for youth and indigenous
+ggplot(data = gfcrIndF7_2PlotBarsTBL,
+       aes(x = `Reporting Date`, y = Value, fill = PopulationType)) +
+  geom_col(color = "black", width = 0.5) +
+  geom_hline(data = gfcrIndF7_2TargetTBL,
+             aes(yintercept = TargetTotal,
+                 color = `Data Type`),
+             linetype = "dashed",
+             linewidth = 1) +
+  geom_label(data = label_data,
+           aes(x = `Reporting Date`,
+               y = Total * 1.05, label = Label),
+           inherit.aes = FALSE,
+           size = 6, hjust = 0,
+           fill = "white",    # Background color
+           alpha = 0.6,       # Partial transparency
+           label.size = 0,  # Border thickness
+           color = "black") +  # Text color
+  labs(title = "F7.2 Total indirect beneficiaries",
+       x = "",
+       y = "# people") +
+  scale_fill_manual(values = populationColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  theme(plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"),
+        legend.position = "right",
+        strip.text = element_text(size = 18),
+        strip.background = element_blank()) +
+  coord_flip(clip = "off")
+```
+
+```{r}
+#| label: F7_3_F7_4_plots_Number_of_financial_mechanisms_and_governance_reforms
+#Plot for sub-indicators with number values - F7.3 & F7.4
+gfcrIndF7_34_PlotTBL <- gfcrProjectReports$F7 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F7.3|F7.4",
+                 x = `Sub-Indicator Name`)) %>% 
+  bind_rows(gfcrProjectReports$F7 %>% 
+              filter(`Data Type` == "Target" &
+                       grepl(pattern = "F7.3|F7.4",
+                             x = `Sub-Indicator Name`)) %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == min(`Reporting Date`) &
+                          `Data Type` == "Report",
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")"),
+         NumberType =
+           case_when(grepl(pattern = "F7.3",
+                           x = `Sub-Indicator Name`) ~
+                       "F7.3 Financial mechanims/reforms",
+                     grepl(pattern = "F7.4",
+                           x = `Sub-Indicator Name`) ~
+                       "F7.4 Governance reforms/policies"))
+
+dataLabels = gfcrIndF7_34_PlotTBL$Label
+names(dataLabels) <- gfcrIndF7_34_PlotTBL$Color
+
+ggplot() +
+  facet_wrap(~NumberType, ncol = 1, scales = "free_y") +
+  geom_col(data = gfcrIndF7_34_PlotTBL %>% 
+             filter(Color == "Report"),
+           aes(x = `Reporting Date`, y = Value, fill = Color),
+           width = 0.25) +
+  geom_hline(data = gfcrIndF7_34_PlotTBL %>% 
+               filter(Color != "Report"),
+             aes(yintercept = Value, color = Color),
+             linetype = "dashed",
+             linewidth = 1) +
+  labs(x = "",
+       y = "#") +
+  # scale_y_continuous(breaks = scales::pretty_breaks(n = 5),
+  #                    labels = scales::number_format(accuracy = 1)) +
+  scale_fill_manual(values = dataColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  guides(fill = "none") +
+  theme(panel.spacing = unit(1, "lines"),
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "right",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"),
+        strip.background = element_rect(fill = "white", colour = "black"),
+        strip.text = element_text(hjust = 0, size = 20)) +
+  coord_flip()
+```
 
 ## Finance solutions
 
