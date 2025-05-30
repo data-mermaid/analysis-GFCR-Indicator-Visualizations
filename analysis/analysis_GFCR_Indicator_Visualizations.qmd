@@ -113,7 +113,7 @@ kable(projectReportsTBL %>% select(-ColorType)) %>%
 
 ------------------------------------------------------------------------
 
-## [F1. Coral Reef extent of GFCR project ]{style="color: #FF7F50;"}
+## [F1. Coral Reef extent of GFCR project]{style="color: #FF7F50;"}
 
 ```{r}
 #| label: F1 table and plot
@@ -192,7 +192,7 @@ ggplot() +
 
 ------------------------------------------------------------------------
 
-## [F2. Area of coral reefs under conservation and sustainable management ]{style="color: #FF7F50;"}
+## [F2. Area of coral reefs under conservation and sustainable management]{style="color: #FF7F50;"}
 
 ```{r}
 #| label: F2 table and barplots
@@ -307,10 +307,10 @@ ggplot() +
 
 ------------------------------------------------------------------------
 
-## [F3. Area of coral reefs under effective coral restoration ]{style="color: #FF7F50;"}
+## [F3. Area of coral reefs under effective coral restoration]{style="color: #FF7F50;"}
 
 ```{r}
-#| label: F3 table and area plot
+#| label: F3 table
 #Create a table with subindicators as rows
 f3TableTrans <- gfcrProjectReports$F3 %>%
   mutate(Label =
@@ -338,6 +338,10 @@ kable(f3TableTrans) %>%
                           border_right = TRUE,
                           extra_css = "border-right: 1px solid black;")
 
+```
+
+```{r}
+#| label: F3.1 plot
 #Plot for F3.1 Area of coral reef restoration
 gfcrIndF3_1PlotTBL <- gfcrProjectReports$F3 %>% 
   filter(`Data Type` == "Report" &
@@ -577,8 +581,10 @@ kable(f4TableTrans) %>%
                           background = dataColors["Report"],
                           border_right = TRUE,
                           extra_css = "border-right: 1px solid black;")
+```
 
-
+```{r}
+#| label: F4 plots for benthic cover
 #Barplot showing reported coral and macroalgae on opposite sites of origin
 gfcrIndF4_12TBL <- gfcrProjectReports$F4 %>%
   filter(`Data Type` == "Report" &
@@ -888,7 +894,7 @@ ggplot(data = gfcrIndF5_4PlotBarsTBL,
 ## [F6. Number of people supported through livelihoods and direct jobs]{style="color: #FF7F50;"}
 
 ```{r}
-#| label: F6 table and plot
+#| label: F6 table
 
 #Create a table with subindicators as rows
 f6TableTrans <- gfcrProjectReports$F6 %>%
@@ -916,7 +922,10 @@ kable(f6TableTrans) %>%
                           background = dataColors["Report"],
                           border_right = TRUE,
                           extra_css = "border-right: 1px solid black;")
+```
 
+```{r}
+#| label: F6 plot
 ##Stacked bar plot by gender with percentages of youth and indigenous as captions
 populationColors <- c("#777777", "#5F8993", "#E37754", "#F6DA80", "#454C84")
 names(populationColors) <- c("total", "men", "women", "youth", "indigenous")
@@ -1209,16 +1218,13 @@ ggplot(data = gfcrIndF7_2PlotBarsTBL,
 ```
 
 ```{r}
-#| label: F7_3_F7_4_plots_Number_of_financial_mechanisms_and_governance_reforms
-#Plot for sub-indicators with number values - F7.3 & F7.4
-gfcrIndF7_34_PlotTBL <- gfcrProjectReports$F7 %>% 
+#| label: F7.3 plot - financial mechanisms
+gfcrIndF7_3PlotTBL <- gfcrProjectReports$F7 %>% 
   filter(`Data Type` == "Report" &
-           grepl(pattern = "F7.3|F7.4",
-                 x = `Sub-Indicator Name`)) %>% 
+           grepl(pattern = "F7.3", x = `Sub-Indicator Name`)) %>% 
   bind_rows(gfcrProjectReports$F7 %>% 
               filter(`Data Type` == "Target" &
-                       grepl(pattern = "F7.3|F7.4",
-                             x = `Sub-Indicator Name`)) %>% 
+                       grepl(pattern = "F7.3", x = `Sub-Indicator Name`)) %>% 
               filter(`Reporting Date` == max(`Reporting Date`))) %>% 
   mutate(Color = ifelse(`Reporting Date` == min(`Reporting Date`) &
                           `Data Type` == "Report",
@@ -1227,47 +1233,85 @@ gfcrIndF7_34_PlotTBL <- gfcrProjectReports$F7 %>%
   mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
          `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
          `Reporting Date` = factor(`Reporting Date`),
-         Label = paste0(Color, " (", `Reporting Date`, ")"),
-         NumberType =
-           case_when(grepl(pattern = "F7.3",
-                           x = `Sub-Indicator Name`) ~
-                       "F7.3 Financial mechanims/reforms",
-                     grepl(pattern = "F7.4",
-                           x = `Sub-Indicator Name`) ~
-                       "F7.4 Governance reforms/policies"))
+         Label = paste0(Color, " (", `Reporting Date`, ")"))
 
-dataLabels = gfcrIndF7_34_PlotTBL$Label
-names(dataLabels) <- gfcrIndF7_34_PlotTBL$Color
+dataLabels = gfcrIndF7_3PlotTBL$Label
+names(dataLabels) <- gfcrIndF7_3PlotTBL$Color
 
 ggplot() +
-  facet_wrap(~NumberType, ncol = 1, scales = "free_y") +
-  geom_col(data = gfcrIndF7_34_PlotTBL %>% 
+  geom_col(data = gfcrIndF7_3PlotTBL %>% 
              filter(Color == "Report"),
            aes(x = `Reporting Date`, y = Value, fill = Color),
            width = 0.25) +
-  geom_hline(data = gfcrIndF7_34_PlotTBL %>% 
+  geom_hline(data = gfcrIndF7_3PlotTBL %>% 
                filter(Color != "Report"),
              aes(yintercept = Value, color = Color),
              linetype = "dashed",
              linewidth = 1) +
   labs(x = "",
-       y = "#") +
-  # scale_y_continuous(breaks = scales::pretty_breaks(n = 5),
-  #                    labels = scales::number_format(accuracy = 1)) +
+       y = "# financial mechanisms/reforms",
+       title = "F7.3 Number of financial mechanisms/reforms") +
   scale_fill_manual(values = dataColors) +
   scale_color_manual(values = dataColors, labels = dataLabels) +
   guides(fill = "none") +
-  theme(panel.spacing = unit(1, "lines"),
+  theme(aspect.ratio = 0.5,
         plot.title = element_text(hjust = 0, size = 25),
         panel.background = element_rect(fill = "white"),
         legend.title = element_blank(),
-        legend.position = "right",
+        legend.position = "bottom",
         axis.title = element_text(size = 20),
         axis.text = element_text(size = 20),
         legend.text = element_text(size = 20),
-        axis.line = element_line(colour = "black"),
-        strip.background = element_rect(fill = "white", colour = "black"),
-        strip.text = element_text(hjust = 0, size = 20)) +
+        axis.line = element_line(colour = "black")) +
+  coord_flip()
+```
+
+```{r}
+#| label: F7.4 plot - governance reforms/policies
+gfcrIndF7_4PlotTBL <- gfcrProjectReports$F7 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F7.4", x = `Sub-Indicator Name`)) %>% 
+  bind_rows(gfcrProjectReports$F7 %>% 
+              filter(`Data Type` == "Target" &
+                       grepl(pattern = "F7.4", x = `Sub-Indicator Name`)) %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == min(`Reporting Date`) &
+                          `Data Type` == "Report",
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")"))
+
+dataLabels = gfcrIndF7_4PlotTBL$Label
+names(dataLabels) <- gfcrIndF7_4PlotTBL$Color
+
+ggplot() +
+  geom_col(data = gfcrIndF7_4PlotTBL %>% 
+             filter(Color == "Report"),
+           aes(x = `Reporting Date`, y = Value, fill = Color),
+           width = 0.25) +
+  geom_hline(data = gfcrIndF7_4PlotTBL %>% 
+               filter(Color != "Report"),
+             aes(yintercept = Value, color = Color),
+             linetype = "dashed",
+             linewidth = 1) +
+  labs(x = "",
+       y = "# governance reforms/policies",
+       title = "F7.4 Number of governance reforms/policies") +
+  scale_fill_manual(values = dataColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  guides(fill = "none") +
+  theme(aspect.ratio = 0.5,
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black")) +
   coord_flip()
 ```
 
