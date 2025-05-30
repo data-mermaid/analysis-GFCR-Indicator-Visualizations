@@ -1,0 +1,719 @@
+---
+title: "GFCR Indicator Visualizations"
+subtitle: "F1 - F7 and raw finance data"
+author: "Iain R. Caldwell"
+date: 05/29/2025
+format: 
+  html: #for website
+    embed-resources: true
+editor: visual
+code-fold: true
+code-summary: "Show the code"
+toc: true
+title-block-banner: "#f0f3f5"
+title-block-banner-color: "black"
+include-after-body: "footer.html"
+---
+
+## Context - Displaying and visualizing GFCR indicators
+
+This GFCR report shows how a convening agent can export their GFCR data from a MERMAID project (www.datamermaid.org), display the monitoring & evaluation indicators as tables, and turn indicator data into useful visualizations. This code shows the first seven indicators and the raw finance data. Including the raw finance data allows a convening agent to aggregate it however they find most useful.
+
+------------------------------------------------------------------------
+
+## Load package libraries and set parameters
+
+This section loads package libraries and assigns parameters used in the rest of the code.
+
+```{r}
+#| label: Load package libraries
+#| warning: false
+
+rm(list = ls()) #remove past stored objects
+options(scipen = 999) #turn off scientific notation
+
+####  Load packages and libraries ####
+## If this is the first time using mermaidr, install the package through "remotes"
+# install.packages("remotes")
+# remotes::install_github("data-mermaid/mermaidr")
+library(mermaidr) #package to download data from datamermaid.org
+library(tidyverse) #package that makes it easier to work with data
+library(ggplot2)
+#devtools::install_github("liamgilbey/ggwaffle") #Only needs to be run once 
+library(ggwaffle)
+library(emojifont)
+library(ggpubr)
+library(kableExtra)
+library(waffle)
+library(ggpattern)
+library(ggfortify)
+library(purrr)
+library(stringr)
+
+#### Assign parameters ####
+dataColors <- c("#475853", "#d88a3b", "#498FC9")
+names(dataColors) <- c("Baseline", "Target", "Report")
+```
+
+------------------------------------------------------------------------
+
+## Load data from a GFCR project
+
+Here is an example of how GFCR data can be exported from a MERMAID project using the mermaidr package (<https://data-mermaid.github.io/mermaidr/>). For this example we will focus on the MERMAID project called "MAR+Invest".
+
+```{r}
+#| label: Load GFCR data from MERMAID project
+
+### Find example projects called "MAR+Invest" that is tagged as "GFCR"
+gfcrProject <- mermaid_search_projects(name = "MAR+Invest",
+                                       tags = "GFCR",
+                                       include_test_projects = F)
+
+### Get all GFCR data associated with that project ####
+gfcrProjectReports <- mermaid_get_gfcr_report(project = gfcrProject)
+
+```
+
+------------------------------------------------------------------------
+
+## Reports in project
+
+The following table shows the GFCR reports that are currently included in this project.
+
+```{r}
+#| label: Display reports in project
+projectReportsTBL <- gfcrProjectReports$F1 %>%
+  select(Project, Title, `Reporting Date`, `Data Type`) %>%
+  mutate(`Reporting Date` = as.Date(`Reporting Date`)) %>% 
+  arrange(`Reporting Date`)
+
+# Identify the earliest "Report" date and mark as "Baseline"
+if (any(projectReportsTBL$`Data Type` == "Report", na.rm = TRUE)) {
+  earliest_date <-
+    min(projectReportsTBL$`Reporting Date`[projectReportsTBL$`Data Type` == "Report"],
+        na.rm = TRUE)
+  projectReportsTBL <- projectReportsTBL %>%
+    mutate(ColorType = ifelse(`Data Type` == "Report" &
+                                `Reporting Date` == earliest_date,
+                              "Baseline",
+                              `Data Type`))
+}
+
+# Get row indices for each ColorType
+baseline_rows <- which(projectReportsTBL$ColorType == "Baseline")
+target_rows <- which(projectReportsTBL$ColorType == "Target")
+report_rows <- which(projectReportsTBL$ColorType == "Report")
+
+# Create kable table with color styling
+kable(projectReportsTBL %>% select(-ColorType)) %>%
+  kable_styling(full_width = FALSE, position = "left") %>%
+  row_spec(baseline_rows, background = dataColors["Baseline"], color = "white") %>%
+  row_spec(target_rows, background = dataColors["Target"]) %>%
+  row_spec(report_rows, background = dataColors["Report"])
+```
+
+------------------------------------------------------------------------
+
+## [F1. Coral Reef extent of GFCR project ]{style="color: #FF7F50;"}
+
+```{r}
+#| label: F1 table and plot
+f1TableTrans <- gfcrProjectReports$F1 %>% 
+  arrange(`Reporting Date`) %>% 
+  mutate(Label = ifelse(`Reporting Date` == earliest_date &
+                          `Data Type` == "Report",
+                        paste0(`Reporting Date`, " Baseline"),
+                        paste0(`Reporting Date`, " ", `Data Type`))) %>% 
+  select(Label, `Area (km2)`) %>% 
+  column_to_rownames(var = "Label") %>%
+  sjmisc::rotate_df() 
+
+rownames(f1TableTrans) <- unique(gfcrProjectReports$F1$`Sub-Indicator Name`)
+
+kable(f1TableTrans) %>%
+  kable_styling(full_width = T, position = "left") %>%
+  kableExtra::column_spec(1, bold = TRUE) %>% 
+  kableExtra::column_spec(baseline_rows+1, 
+                          background = dataColors["Baseline"], color = "white") %>%
+  kableExtra::column_spec(target_rows+1,
+                          background = dataColors["Target"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;") %>% 
+  kableExtra::column_spec(report_rows+1,
+                          background = dataColors["Report"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;")
+
+#Show the baseline and last target as dashed lines
+#Show all the reports as horizontal barplots
+gfcrIndF1PlotTBL <- gfcrProjectReports$F1 %>% 
+  filter(`Data Type` == "Report") %>% 
+  bind_rows(gfcrProjectReports$F1 %>% 
+              filter(`Data Type` == "Target") %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == earliest_date &
+                          `Data Type` == "Report",
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")"))
+
+dataLabels = gfcrIndF1PlotTBL$Label
+names(dataLabels) <- gfcrIndF1PlotTBL$Color
+
+ggplot() +
+  geom_col(data = gfcrIndF1PlotTBL %>% 
+             filter(Color == "Report"),
+           aes(x = `Reporting Date`, y = `Area (km2)`, fill = Color),
+           width = 0.25) +
+  geom_hline(data = gfcrIndF1PlotTBL %>% 
+               filter(Color != "Report"),
+             aes(yintercept = `Area (km2)`, color = Color),
+             linetype = "dashed",
+             linewidth = 1) +
+  labs(x = "",
+       y = expression(paste("Coral reef area ( ",km^2,")")),
+       title = "F1 Coral reef extent of GFCR project") +
+  scale_fill_manual(values = dataColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  guides(fill = "none") +
+  theme(aspect.ratio = 0.5,
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black")) +
+  coord_flip()
+```
+
+------------------------------------------------------------------------
+
+## [F2. Area of coral reefs under conservation and sustainable management ]{style="color: #FF7F50;"}
+
+```{r}
+#| label: F2 table and barplots
+f2TableTrans <- gfcrProjectReports$F2 %>%
+  mutate(Label =
+           ifelse(`Reporting Date` == min(gfcrProjectReports$F2$`Reporting Date`),
+                  paste0(`Reporting Date`, " Baseline"),
+                  paste0(`Reporting Date`, " ", `Data Type`))) %>% 
+  pivot_wider(names_from = `Sub-Indicator Name`,
+              values_from = `Area (km2)`) %>% 
+  select(Label, starts_with("F2")) %>% 
+  column_to_rownames(var = "Label") %>%
+  sjmisc::rotate_df()
+
+kable(f2TableTrans) %>%
+  kable_styling(full_width = F, position = "left") %>%
+  kableExtra::column_spec(1, bold = TRUE) %>% 
+  kableExtra::column_spec(baseline_rows+1,
+                          background = dataColors["Baseline"], color = "white") %>%
+  kableExtra::column_spec(target_rows+1,
+                          background = dataColors["Target"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;") %>% 
+  kableExtra::column_spec(report_rows+1,
+                          background = dataColors["Report"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;")
+
+#Create plots for the areas using only the most recent data for report
+gfcrIndF2PlotTBL <- gfcrProjectReports$F2 %>%
+  filter(`Data Type` == "Report") %>% 
+  filter(`Reporting Date` == min(`Reporting Date`)|
+           `Reporting Date` == max(`Reporting Date`)) %>% 
+  bind_rows(gfcrProjectReports$F2 %>% 
+              filter(`Data Type` == "Target") %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == min(`Reporting Date`),
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")")) %>% 
+  mutate(CoralOrTotal =
+           case_when(grepl(pattern = "F2.1a|F2.2a|F2.3a|F2.4",
+                           x = `Sub-Indicator Name`) ~ "Coral reef area",
+                     grepl(pattern = "F2.1b|F2.2b|F2.3b|F2.5",
+                           x = `Sub-Indicator Name`) ~ "Total area"),
+         ProtectionType =
+           case_when(grepl(pattern = "F2.1",
+                           x = `Sub-Indicator Name`) ~
+                       "MPAs and OECMs",
+                     grepl(pattern = "F2.2",
+                           x = `Sub-Indicator Name`) ~
+                       "Locally managed and co-managed",
+                     grepl(pattern = "F2.3",
+                           x = `Sub-Indicator Name`) ~
+                       "Fisheries management",
+                     grepl(pattern = "F2.4",
+                           x = `Sub-Indicator Name`) ~
+                       "Pollution mitigation",
+                     grepl(pattern = "F2.5",
+                           x = `Sub-Indicator Name`) ~
+                       "Non-coral reef ecosystems")) %>%
+  mutate(ProtectionType =
+           factor(ProtectionType,
+                  levels = c("MPAs and OECMs",
+                             "Locally managed and co-managed",
+                             "Fisheries management",
+                             "Pollution mitigation",
+                             "Non-coral reef ecosystems"))) 
+
+pointShapes <- c("Baseline" = 18,  # Diamond
+                 "Report" = 19,    # Circle
+                 "Target" = 15)    # Square
+
+ggplot() +
+  facet_wrap(~CoralOrTotal, ncol=1, scales = "free") +
+  geom_segment(data = gfcrIndF2PlotTBL %>% filter(`Data Type` == "Report"),
+               aes(x = `Area (km2)`,
+                   xend = 0,
+                   y = ProtectionType,
+                   yend = ProtectionType,
+                   colour = Color),
+               linewidth = 1.5) +
+  geom_point(data = gfcrIndF2PlotTBL,
+             aes(x = `Area (km2)`,
+                 y = ProtectionType,
+                 colour = Color,
+                 shape = Color),
+             size = 3) +
+  labs(y = "",
+       title = "F2 Areas under conservation and sustainable management") +
+  scale_y_discrete(limits = rev) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  scale_shape_manual(values = pointShapes, labels = dataLabels) +
+  guides(color = guide_legend(override.aes = list(shape = pointShapes),
+                              nrow = 3),
+         shape = "none") + 
+  theme(plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        strip.background = element_rect(fill = "white", colour = "black"),
+        strip.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"))
+
+```
+
+------------------------------------------------------------------------
+
+## [F3. Area of coral reefs under effective coral restoration ]{style="color: #FF7F50;"}
+
+```{r}
+#| label: F3 table and area plot
+#Create a table with subindicators as rows
+f3TableTrans <- gfcrProjectReports$F3 %>%
+  mutate(Label =
+           ifelse(`Reporting Date` == min(gfcrProjectReports$F3$`Reporting Date`),
+                  paste0(`Reporting Date`, " Baseline"),
+                  paste0(`Reporting Date`, " ", `Data Type`))) %>% 
+  pivot_wider(names_from = `Sub-Indicator Name`,
+              values_from = Value) %>% 
+  select(Label, starts_with("F3")) %>% 
+  column_to_rownames(var = "Label") %>%
+  sjmisc::rotate_df()
+
+kable(f3TableTrans) %>%
+  kable_styling(full_width = F, position = "left") %>%
+  kableExtra::column_spec(1, bold = TRUE) %>% 
+  kableExtra::column_spec(baseline_rows+1,
+                          background = dataColors["Baseline"],
+                          color = "white") %>% 
+  kableExtra::column_spec(target_rows+1,
+                          background = dataColors["Target"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;") %>% 
+  kableExtra::column_spec(report_rows+1,
+                          background = dataColors["Report"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;")
+
+#Plot for F3.1 Area of coral reef restoration
+gfcrIndF3_1PlotTBL <- gfcrProjectReports$F3 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F3.1", x = `Sub-Indicator Name`)) %>% 
+  bind_rows(gfcrProjectReports$F3 %>% 
+              filter(`Data Type` == "Target" &
+                       grepl(pattern = "F3.1", x = `Sub-Indicator Name`)) %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == earliest_date &
+                          `Data Type` == "Report",
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")"))
+
+dataLabels = gfcrIndF3_1PlotTBL$Label
+names(dataLabels) <- gfcrIndF3_1PlotTBL$Color
+
+ggplot() +
+  geom_col(data = gfcrIndF3_1PlotTBL %>% 
+             filter(Color == "Report"),
+           aes(x = `Reporting Date`, y = Value, fill = Color),
+           width = 0.25) +
+  geom_hline(data = gfcrIndF3_1PlotTBL %>% 
+               filter(Color != "Report"),
+             aes(yintercept = Value, color = Color),
+             linetype = "dashed",
+             linewidth = 1) +
+  labs(x = "",
+       y = expression(paste("Area ( ",km^2,")")),
+       title = "F3.1 Area of effective coral reef restoration") +
+  scale_fill_manual(values = dataColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  guides(fill = "none") +
+  theme(aspect.ratio = 0.5,
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black")) +
+  coord_flip()
+```
+
+```{r}
+#| label: F3 Number plots
+#| fig-height: 10
+#Plot for sub-indicators with number values - F3.2, F3.3, F3.4, F3.6
+gfcrIndF3_2346_PlotTBL <- gfcrProjectReports$F3 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F3.2|F3.3|F3.4|F3.6",
+                 x = `Sub-Indicator Name`)) %>% 
+  bind_rows(gfcrProjectReports$F3 %>% 
+              filter(`Data Type` == "Target" &
+                       grepl(pattern = "F3.2|F3.3|F3.4|F3.6",
+                             x = `Sub-Indicator Name`)) %>% 
+              filter(`Reporting Date` == max(`Reporting Date`))) %>% 
+  mutate(Color = ifelse(`Reporting Date` == earliest_date &
+                          `Data Type` == "Report",
+                        "Baseline",
+                        `Data Type`)) %>% 
+  mutate(Color = factor(Color, levels = c("Baseline", "Target", "Report")),
+         `Data Type` = factor(`Data Type`, levels = c("Target", "Report")),
+         `Reporting Date` = factor(`Reporting Date`),
+         Label = paste0(Color, " (", `Reporting Date`, ")"),
+         NumberType =
+           case_when(grepl(pattern = "F3.2",
+                           x = `Sub-Indicator Name`) ~
+                       "F3.2 In-situ projects",
+                     grepl(pattern = "F3.3",
+                           x = `Sub-Indicator Name`) ~
+                       "F3.3 Plans, technologies, strategies, or guidelines",
+                     grepl(pattern = "F3.4",
+                           x = `Sub-Indicator Name`) ~
+                       "F3.4 Trainings",
+                     grepl(pattern = "F3.6",
+                           x = `Sub-Indicator Name`) ~
+                       "F3.6 Response plans"))
+
+
+ggplot() +
+  facet_wrap(~NumberType, ncol = 1, scales = "free_y") +
+  geom_col(data = gfcrIndF3_2346_PlotTBL %>% 
+             filter(Color == "Report"),
+           aes(x = `Reporting Date`, y = Value, fill = Color),
+           width = 0.25) +
+  geom_hline(data = gfcrIndF3_2346_PlotTBL %>% 
+               filter(Color != "Report"),
+             aes(yintercept = Value, color = Color),
+             linetype = "dashed",
+             linewidth = 1) +
+  labs(x = "",
+       y = "#") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 5),
+                     labels = scales::number_format(accuracy = 1)) +
+  scale_fill_manual(values = dataColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  guides(fill = "none") +
+  theme(panel.spacing = unit(1, "lines"),
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        legend.position = "right",
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"),
+        strip.background = element_rect(fill = "white", colour = "black"),
+        strip.text = element_text(hjust = 0, size = 20)) +
+  coord_flip()
+
+
+```
+
+```{r}
+#| label: F3.5 plot - people engaged in coral reef restoration
+
+##Stacked bar plot by gender with percentages of youth and indigenous as captions
+populationColors <- c("#777777", "#5F8993", "#E37754", "#F6DA80", "#454C84")
+names(populationColors) <- c("total", "men", "women", "youth", "indigenous")
+
+# Extract text within brackets to get "men" and "women"
+extract_text <- function(s) {
+  str_extract(s, "\\[(.*?)\\]") %>%    # Extract text within square brackets
+    str_replace_all("\\[|\\]", "")     # Remove brackets
+}
+
+# Prepare men/women data
+f3_5PlotBarsTBL <- gfcrProjectReports$F3 %>% 
+  filter(`Data Type` == "Report" &
+           grepl(pattern = "F3.5a|F3.5b",
+                 x = `Sub-Indicator Name`)) %>% 
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>% 
+  mutate(PopulationType = factor(PopulationType, levels = c("men", "women")))
+
+# Prepare youth and indigenous data
+f3_5OtherTBL <- gfcrProjectReports$F3 %>%
+  filter(`Data Type` == "Report",
+         grepl("F3.5c|F3.5d", `Sub-Indicator Name`)) %>%
+  mutate(`Reporting Date` = factor(`Reporting Date`),
+         PopulationType = extract_text(`Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, PopulationType) %>%
+  summarise(Value = sum(Value), .groups = "drop") %>%
+  pivot_wider(names_from = PopulationType, values_from = Value, values_fill = 0)
+
+# Get total height of each bar (men + women)
+bar_totals <- f3_5PlotBarsTBL %>%
+  group_by(`Reporting Date`) %>%
+  summarise(Total = sum(Value), .groups = "drop")
+
+# Combine totals with youth and indigenous
+label_data <- left_join(bar_totals, f3_5OtherTBL, by = "Reporting Date") %>%
+  mutate(Label = paste0("Youth: ", youth, "\nIndigenous: ", indigenous))
+
+# Extract target data
+f3_5TargetTBL <- gfcrProjectReports$F3 %>%
+  filter(`Data Type` == "Target",
+         grepl("F3.5a|F3.5b", `Sub-Indicator Name`)) %>%
+  group_by(`Reporting Date`, `Data Type`) %>%
+  summarise(TargetTotal = sum(Value), .groups = "drop") %>%
+  filter(`Reporting Date` == max(`Reporting Date`))
+
+#Horizontal stacked barplots, dashed target, and numbers for youth and indigenous
+ggplot(data = f3_5PlotBarsTBL,
+       aes(x = `Reporting Date`, y = Value, fill = PopulationType)) +
+  geom_col(color = "black", width = 0.5) +
+  geom_hline(data = f3_5TargetTBL,
+             aes(yintercept = TargetTotal,
+                 color = `Data Type`),
+             linetype = "dashed",
+             linewidth = 1) +
+  geom_text(data = label_data,
+            aes(x = `Reporting Date`,
+                y = Total * 1.05, label = Label),#+1 for spacing
+            inherit.aes = FALSE,
+            size = 6,
+            hjust = 0) +
+  labs(title = "F3.5 Number of people engaged in coral restoration",
+       x = "",
+       y = "# people") +
+  scale_fill_manual(values = populationColors) +
+  scale_color_manual(values = dataColors, labels = dataLabels) +
+  theme(aspect.ratio = 1,
+        plot.title = element_text(hjust = 0, size = 25),
+        panel.background = element_rect(fill = "white"),
+        legend.title = element_blank(),
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.line = element_line(colour = "black"),
+        legend.position = "right",
+        strip.text = element_text(size = 18),
+        strip.background = element_blank()) +
+  coord_flip(clip = "off")
+
+```
+
+------------------------------------------------------------------------
+
+## [F4. Change in coral reef health]{style="color: #FF7F50;"}
+
+```{r}
+#| label: F4 table and plots
+
+#Create a table with subindicators as rows
+f4TableTrans <- gfcrProjectReports$F4 %>%
+  mutate(Label =
+           ifelse(`Reporting Date` == min(gfcrProjectReports$F4$`Reporting Date`),
+                  paste0(`Reporting Date`, " Baseline"),
+                  paste0(`Reporting Date`, " ", `Data Type`))) %>% 
+  pivot_wider(names_from = `Sub-Indicator Name`,
+              values_from = Value) %>% 
+  select(Label, starts_with("F4")) %>% 
+  column_to_rownames(var = "Label") %>%
+  sjmisc::rotate_df()
+
+kable(f4TableTrans) %>%
+  kable_styling(full_width = F, position = "left") %>%
+  kableExtra::column_spec(1, bold = TRUE) %>% 
+  kableExtra::column_spec(baseline_rows+1,
+                          background = dataColors["Baseline"],
+                          color = "white") %>% 
+  kableExtra::column_spec(target_rows+1,
+                          background = dataColors["Target"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;") %>% 
+  kableExtra::column_spec(report_rows+1,
+                          background = dataColors["Report"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;")
+
+```
+
+------------------------------------------------------------------------
+
+## [F5. Number of communities engaged in meaningful participation, co-development and capacity strengthening]{style="color: #FF7F50;"}
+
+```{r}
+#| label: F5 table and plots
+
+#Create a table with subindicators as rows
+f5TableTrans <- gfcrProjectReports$F5 %>%
+  mutate(Label =
+           ifelse(`Reporting Date` == min(gfcrProjectReports$F5$`Reporting Date`),
+                  paste0(`Reporting Date`, " Baseline"),
+                  paste0(`Reporting Date`, " ", `Data Type`))) %>% 
+  pivot_wider(names_from = `Sub-Indicator Name`,
+              values_from = Value) %>% 
+  select(Label, starts_with("F5")) %>% 
+  column_to_rownames(var = "Label") %>%
+  sjmisc::rotate_df()
+
+kable(f5TableTrans) %>%
+  kable_styling(full_width = F, position = "left") %>%
+  kableExtra::column_spec(1, bold = TRUE) %>% 
+  kableExtra::column_spec(baseline_rows+1,
+                          background = dataColors["Baseline"],
+                          color = "white") %>% 
+  kableExtra::column_spec(target_rows+1,
+                          background = dataColors["Target"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;") %>% 
+  kableExtra::column_spec(report_rows+1,
+                          background = dataColors["Report"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;")
+
+```
+
+------------------------------------------------------------------------
+
+## [F6. Number of people supported through livelihoods and direct jobs]{style="color: #FF7F50;"}
+
+```{r}
+#| label: F6 table and plots
+
+#Create a table with subindicators as rows
+f6TableTrans <- gfcrProjectReports$F6 %>%
+  mutate(Label =
+           ifelse(`Reporting Date` == min(gfcrProjectReports$F6$`Reporting Date`),
+                  paste0(`Reporting Date`, " Baseline"),
+                  paste0(`Reporting Date`, " ", `Data Type`))) %>% 
+  pivot_wider(names_from = `Sub-Indicator Name`,
+              values_from = Value) %>% 
+  select(Label, starts_with("F6")) %>% 
+  column_to_rownames(var = "Label") %>%
+  sjmisc::rotate_df()
+
+kable(f6TableTrans) %>%
+  kable_styling(full_width = F, position = "left") %>%
+  kableExtra::column_spec(1, bold = TRUE) %>% 
+  kableExtra::column_spec(baseline_rows+1,
+                          background = dataColors["Baseline"],
+                          color = "white") %>% 
+  kableExtra::column_spec(target_rows+1,
+                          background = dataColors["Target"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;") %>% 
+  kableExtra::column_spec(report_rows+1,
+                          background = dataColors["Report"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;")
+```
+
+------------------------------------------------------------------------
+
+## [F7. Number of people supported to better adapt, respond and recover to the effects of climate change and major external shocks as a result of GFCR]{style="color: #FF7F50;"}
+
+```{r}
+#| label: F7 table and plots
+
+#Create a table with subindicators as rows
+f7TableTrans <- gfcrProjectReports$F7 %>%
+  mutate(Label =
+           ifelse(`Reporting Date` == min(gfcrProjectReports$F7$`Reporting Date`),
+                  paste0(`Reporting Date`, " Baseline"),
+                  paste0(`Reporting Date`, " ", `Data Type`))) %>% 
+  pivot_wider(names_from = `Sub-Indicator Name`, values_from = Value) %>% 
+  select(Label, starts_with("F7")) %>% 
+  column_to_rownames(var = "Label") %>%
+  sjmisc::rotate_df()
+
+kable(f7TableTrans) %>%
+  kable_styling(full_width = F, position = "left") %>%
+  kableExtra::column_spec(1, bold = TRUE) %>% 
+  kableExtra::column_spec(baseline_rows+1,
+                          background = dataColors["Baseline"],
+                          color = "white") %>% 
+  kableExtra::column_spec(target_rows+1,
+                          background = dataColors["Target"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;") %>% 
+  kableExtra::column_spec(report_rows+1,
+                          background = dataColors["Report"],
+                          border_right = TRUE,
+                          extra_css = "border-right: 1px solid black;")
+```
+
+------------------------------------------------------------------------
+
+## Finance solutions
+
+```{r}
+#| label: Finance solutions table
+#Create a table of the finance solutions
+gfcrFinanceSolTBL <- gfcrProjectReports$BusinessesFinanceSolutions
+
+kable(gfcrFinanceSolTBL) %>% kable_styling(full_width = F, position = "left") %>% kableExtra::column_spec(1, bold = TRUE) 
+```
+
+------------------------------------------------------------------------
+
+## Investments
+
+```{r}
+#| label: Investments table
+#Create a table of the investments
+gfcrInvestmentsTBL <- gfcrProjectReports$Investments
+
+kable(gfcrInvestmentsTBL) %>% kable_styling(full_width = F, position = "left") %>% kableExtra::column_spec(1, bold = TRUE)
+```
+
+------------------------------------------------------------------------
+
+## Revenue
+
+```{r}
+#| label: Revenue table
+#Create a table of the revenue
+gfcrRevenueTBL <- gfcrProjectReports$Revenues
+
+kable(gfcrRevenueTBL) %>% kable_styling(full_width = F, position = "left") %>% kableExtra::column_spec(1, bold = TRUE)
+```
